@@ -3,6 +3,7 @@ class TestCase:
         self.name = name
         self.wasRun = None
         self.log = None
+        self.suite = TestSuite()
 
     def setup(self):
         pass
@@ -10,20 +11,37 @@ class TestCase:
     def teardown(self):
         pass
 
-    def run(self):
-        result = TestResult()
+    def run(self, result):
         result.test_started()
-        self.setup()
-        method = getattr(self, self.name)
-        method()
+        try:
+            self.setup()
+        except:
+            result.test_setup_error()
+        try:
+            method = getattr(self, self.name)
+            method()
+        except:
+            result.test_failed()
         self.teardown()
-        return result
+
+
+class TestSuite:
+    def __init__(self):
+        self.tests = []
+
+    def add(self, test):
+        self.tests.append(test)
+
+    def run(self, result):
+        for test in self.tests:
+            test.run(result)
 
 
 class TestResult:
     def __init__(self):
         self.runCount = 0
         self.failedCount = 0
+        self.setup_error = ""
 
     def test_started(self):
         self.runCount = self.runCount + 1
@@ -31,8 +49,11 @@ class TestResult:
     def test_failed(self):
         self.failedCount = self.failedCount + 1
 
+    def test_setup_error(self):
+        self.setup_error = "[setup error]"
+
     def summary(self):
-        return "%d run, %d failed" % (self.runCount, self.failedCount)
+        return "%d run, %d failed%s" % (self.runCount, self.failedCount, self.setup_error)
 
 
 class WasRun(TestCase):
@@ -52,29 +73,56 @@ class WasRun(TestCase):
 
 
 class TestCaseTest(TestCase):
-    def test_result(self):
-        test = WasRun("testmethod")
-        result = test.run()
-        assert ("1 run, 0 failed" == result.summary())
-
-    def test_failed_result(self):
-        test = WasRun("testmethod")
-        result = test.run()
-        assert ("1 run, 1 failed" == result.summary())
+    def setup(self):
+        self.result = TestResult()
+        # assert (1 == 2)
 
     def test_template_method(self):
         self.test = WasRun("testmethod")
-        self.test.run()
+        self.test.run(self.result)
         assert ("setUp testMethod tearDown " == self.test.log)
 
+    def test_result(self):
+        test = WasRun("testmethod")
+        test.run(self.result)
+        assert ("1 run, 0 failed" == self.result.summary())
+
+    def test_failed_result(self):
+        test = WasRun("testmethod")
+        test.run(self.result)
+        assert (not "1 run, 1 failed" == self.result.summary())
+
     def test_failed_result_formatting(self):
-        result = TestResult()
-        result.test_started()
-        result.test_failed()
-        assert ("1 run, 1 failed" == result.summary())
+        self.result.test_started()
+        self.result.test_failed()
+        assert ("1 run, 1 failed" == self.result.summary())
+
+    def test_suite(self):
+        testsuite = TestSuite()
+        testsuite.add(WasRun("testmethod"))
+        testsuite.add(WasRun("test_broken_method"))
+        testsuite.run(self.result)
+        assert ("2 run, 1 failed" == self.result.summary())
+
+    def test_make_suite(self):
+        self.suite.add(WasRun("testmethod"))
+        self.suite.add(WasRun("test_broken_method"))
+        self.suite.run(self.result)
+        assert ("2 run, 1 failed" == self.result.summary())
+
+    def test_setup_failed(self):
+        self.result.test_setup_error()
+        assert ("[setup error]" == self.result.setup_error)
 
 
-TestCaseTest("test_template_method").run()
-TestCaseTest("test_result").run()
-TestCaseTest("test_failed_result_formatting").run()
-TestCaseTest("test_failed_result").run()
+suite = TestSuite()
+suite.add(TestCaseTest("test_template_method"))
+suite.add(TestCaseTest("test_result"))
+suite.add(TestCaseTest("test_failed_result_formatting"))
+suite.add(TestCaseTest("test_failed_result"))
+suite.add(TestCaseTest("test_suite"))
+suite.add(TestCaseTest("test_make_suite"))
+suite.add(TestCaseTest("test_setup_failed"))
+testResult = TestResult()
+suite.run(testResult)
+print(testResult.summary())
